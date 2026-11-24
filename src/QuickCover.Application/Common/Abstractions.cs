@@ -27,6 +27,7 @@ public interface IPurchaseRepository
 public interface IPolicyReadRepository
 {
     Task<PolicySummary?> GetByQuoteIdAsync(Guid quoteId, string customerId, CancellationToken ct);
+    Task<IReadOnlyList<PolicySummary>> ListForCustomerAsync(string customerId, CancellationToken ct);
 }
 
 public interface IEventPublisher

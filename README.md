@@ -4,11 +4,16 @@ A small taxi-insurance quote-and-buy system, built to practise the Acorn Insuran
 **.NET 8, Clean Architecture, Mediator, MassTransit + RabbitMQ, SQL Server, MongoDB, Redis, Docker**,
 deploying later to **AKS** with Azure-managed equivalents.
 
-This is **step 1**: the backend, running entirely on your machine with Docker Compose.
+Steps 1 and 2 are done: the backend and a Next.js frontend, running entirely on your machine with Docker Compose.
 
 ## Architecture
 
+The browser talks only to the Next.js web app. Its `/api/*` route handler proxies to the Quote API
+(a backend-for-frontend), so the API needs no CORS settings and can stay internal.
+
 ```
+Browser ──► Web (Next.js, /api/* proxy) ──► Quote API
+
             POST /api/quotes                          POST /api/quotes/{id}/purchase
 Customer ─────────────────────► Quote API ◄──────────────────────────────────────── Customer
                                    │  │  │
@@ -30,6 +35,7 @@ Customer ─────────────────────► Quot
 | `QuickCover.Infrastructure` | Infrastructure | EF Core + outbox, Mongo repository, Redis cache, MassTransit setup. |
 | `QuickCover.QuoteApi` | Host | Minimal API endpoints, ProblemDetails error handling, Swagger. |
 | `QuickCover.PolicyWorker` | Host | `QuotePurchasedConsumer`, which issues policies. |
+| `QuickCover.Web` | Frontend | Next.js 16 (App Router, Tailwind): quote form, buy, "My policies", plus a proxy to the API. |
 | `QuickCover.UnitTests` | Tests | Pricing and quote rules. |
 
 Dependencies point inwards: Domain ← Application ← Infrastructure ← hosts.
@@ -42,13 +48,22 @@ Prerequisites: Docker Desktop. For running outside Docker or running tests, the 
 docker compose up --build
 ```
 
+- Web app: http://localhost:3080
 - Swagger: http://localhost:5080/swagger
 - RabbitMQ management: http://localhost:15673 (guest / guest)
 
-Redis and RabbitMQ are published on host ports 6380, 5673 and 15673 so they do not clash with other local stacks. Override them with `REDIS_PORT`, `RABBITMQ_PORT` and `RABBITMQ_UI_PORT` in `.env` (see `.env.example`).
+Redis, RabbitMQ and the web app are published on host ports 6380, 5673, 15673 and 3080 so they do not clash with other local stacks. Override them with `REDIS_PORT`, `RABBITMQ_PORT`, `RABBITMQ_UI_PORT` and `WEB_PORT` in `.env` (see `.env.example`).
 
 > **Apple Silicon:** the SQL Server image is x86-only. In Docker Desktop, turn on
 > *Settings → General → Use Rosetta for x86/amd64 emulation*.
+
+Run the frontend outside Docker (Node 20+; needs the API on http://localhost:5080, or set `API_URL`):
+
+```bash
+cd src/QuickCover.Web
+npm install
+npm run dev      # http://localhost:3080
+```
 
 Run the tests:
 
@@ -57,6 +72,11 @@ dotnet test
 ```
 
 ## Try the flow
+
+In the browser: open http://localhost:3080, get a price, pay (simulated), and watch the policy appear a second
+later. The header shows a demo customer id: click it to switch customer and check you can't see their quotes.
+
+Or with curl:
 
 ```bash
 # 1. Get a quote
@@ -71,6 +91,9 @@ curl -s -X POST http://localhost:5080/api/quotes/<quoteId>/purchase \
 
 # 3. Poll for the policy (404 for a second or two while the worker issues it)
 curl -s http://localhost:5080/api/quotes/<quoteId>/policy -H "X-Customer-Id: cust-123"
+
+# 4. List the customer's policies
+curl -s http://localhost:5080/api/policies -H "X-Customer-Id: cust-123"
 ```
 
 Things worth trying:
@@ -90,20 +113,24 @@ Things worth trying:
 - **Mediator, not MediatR.** It's source-generated (no reflection) and MIT-licensed. MediatR moved to a commercial licence in 2025.
 - **MassTransit 8.x.** It's Apache 2.0. v9 requires a commercial licence.
 - **Validation pipeline.** One Mediator `IPipelineBehavior` validates every command before its handler runs.
+- **Backend-for-frontend proxy.** The Next.js route handler reads `API_URL` per request, so one web image is promoted
+  through every environment. It forwards only `/api/quotes/*` and `/api/policies/*`. Entra tokens get attached here later.
+- **Async issuance in the UI.** Purchase returns `202 Accepted`. The quote page polls the policy endpoint and, after
+  30 seconds, falls back to "it will appear in My policies".
 - **ProblemDetails.** Errors come back as RFC 7807 JSON. A 500 never leaks internals.
 
 ## Known shortcuts (deliberate, for step 1)
 
 - `EnsureCreated()` instead of EF Core migrations. Before AKS, switch to migrations:
   `dotnet ef migrations add Initial -p src/QuickCover.Infrastructure -s src/QuickCover.QuoteApi`
-- The customer comes from an `X-Customer-Id` header. This gets replaced by Entra ID tokens in a later step.
+- The customer comes from an `X-Customer-Id` header (the web app keeps a demo id in localStorage). This gets replaced by Entra ID tokens in a later step.
 - Payment is faked.
 - Connection strings are in config. In Azure they move to Key Vault, read via managed identity.
 
 ## Roadmap
 
-1. ✅ Backend running locally (this step)
-2. Next.js frontend: quote form, buy, "my policies"
+1. ✅ Backend running locally
+2. ✅ Next.js frontend: quote form, buy, "my policies"
 3. Docs worker: consume `PolicyIssued`, write a PDF to Blob storage (Azurite locally)
 4. Terraform: AKS, ACR, Azure SQL, DocumentDB, Managed Redis, Key Vault, Storage
 5. CI/CD: build, test, push to ACR, Helm deploy

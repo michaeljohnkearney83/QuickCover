@@ -2,6 +2,7 @@
 #   sqlserver -> Azure SQL | mongo -> Azure DocumentDB | redis -> Azure Managed Redis | rabbitmq -> RabbitMQ in AKS (or Service Bus)
 #
 #   docker compose up --build
+#   Web app:      http://localhost:3080
 #   Swagger:      http://localhost:5080/swagger
 #   RabbitMQ UI:  http://localhost:15673  (guest / guest)
 
@@ -78,3 +79,13 @@ services:
     depends_on:
       sqlserver: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
+
+  web:
+    build:
+      context: src/QuickCover.Web
+    environment:
+      # Server-side only: the browser calls the web app, which proxies /api/* to this address.
+      API_URL: "http://quote-api:8080"
+    ports: ["${WEB_PORT:-3080}:3000"]
+    depends_on:
+      - quote-api
