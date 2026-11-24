@@ -1,0 +1,11 @@
+bin/
+obj/
+.vs/
+.vscode/
+.idea/
+*.user
+*.swp
+.env
+TestResults/
+node_modules/
+.next/

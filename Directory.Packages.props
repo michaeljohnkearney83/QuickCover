@@ -1,0 +1,29 @@
+<Project>
+  <!-- Central package management: every version lives here, csproj files list names only. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Mediator (martinothamar/Mediator): MIT-licensed, source-generated alternative to MediatR -->
+    <PackageVersion Include="Mediator.Abstractions" Version="2.1.7" />
+    <PackageVersion Include="Mediator.SourceGenerator" Version="2.1.7" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
+
+    <!-- MassTransit v8 is Apache 2.0; v9+ needs a commercial licence -->
+    <PackageVersion Include="MassTransit" Version="8.2.5" />
+    <PackageVersion Include="MassTransit.RabbitMQ" Version="8.2.5" />
+    <PackageVersion Include="MassTransit.Azure.ServiceBus.Core" Version="8.2.5" />
+    <PackageVersion Include="MassTransit.EntityFrameworkCore" Version="8.2.5" />
+
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="8.0.11" />
+    <PackageVersion Include="MongoDB.Driver" Version="2.28.0" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+    <PackageVersion Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+
+    <!-- Tests -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageVersion Include="xunit" Version="2.9.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,80 @@
+# Local stand-ins for the Azure services:
+#   sqlserver -> Azure SQL | mongo -> Azure DocumentDB | redis -> Azure Managed Redis | rabbitmq -> RabbitMQ in AKS (or Service Bus)
+#
+#   docker compose up --build
+#   Swagger:      http://localhost:5080/swagger
+#   RabbitMQ UI:  http://localhost:15673  (guest / guest)
+
+x-dotnet-env: &dotnet-env
+  ConnectionStrings__Sql: "Server=sqlserver,1433;Database=QuickCover;User Id=sa;Password=${SA_PASSWORD:-QuickCover_Dev123!};TrustServerCertificate=True"
+  Messaging__Transport: RabbitMq
+  Messaging__RabbitMq__Host: rabbitmq
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${SA_PASSWORD:-QuickCover_Dev123!}"
+    ports: ["1433:1433"]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -C -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  mongo:
+    image: mongo:7
+    ports: ["27017:27017"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  redis:
+    image: redis:7-alpine
+    ports: ["${REDIS_PORT:-6380}:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    ports: ["${RABBITMQ_PORT:-5673}:5672", "${RABBITMQ_UI_PORT:-15673}:15672"]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  quote-api:
+    build:
+      context: .
+      dockerfile: src/QuickCover.QuoteApi/Dockerfile
+    environment:
+      <<: *dotnet-env
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Mongo: "mongodb://mongo:27017"
+      ConnectionStrings__Redis: "redis:6379"
+    ports: ["5080:8080"]
+    depends_on:
+      sqlserver: { condition: service_healthy }
+      mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+
+  policy-worker:
+    build:
+      context: .
+      dockerfile: src/QuickCover.PolicyWorker/Dockerfile
+    environment:
+      <<: *dotnet-env
+      DOTNET_ENVIRONMENT: Development
+    restart: unless-stopped
+    depends_on:
+      sqlserver: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }

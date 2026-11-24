@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Message contracts shared between services. Keep these small and versioned carefully:
+       changing a field here changes the "API" between the Quote API and the workers. -->
+</Project>
