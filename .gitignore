@@ -9,3 +9,12 @@ obj/
 TestResults/
 node_modules/
 .next/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+*.local.tfvars
+infra/terraform/environments/*.backend.hcl

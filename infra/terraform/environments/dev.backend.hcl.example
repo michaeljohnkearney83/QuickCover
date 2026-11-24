@@ -1,0 +1,6 @@
+# Copy to dev.backend.hcl (git-ignored) and fill in the names printed by scripts/bootstrap-state.ps1.
+resource_group_name  = "rg-quickcover-tfstate"
+storage_account_name = "stqctfstateXXXXX"
+container_name       = "tfstate"
+key                  = "quickcover-dev.tfstate"
+use_azuread_auth     = true

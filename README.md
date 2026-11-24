@@ -4,8 +4,9 @@ A small taxi-insurance quote-and-buy system, built to practise the Acorn Insuran
 **.NET 8, Clean Architecture, Mediator, MassTransit + RabbitMQ, SQL Server, MongoDB, Redis, Docker**,
 deploying later to **AKS** with Azure-managed equivalents.
 
-Steps 1 to 3 are done: the backend, a Next.js frontend and a docs worker that produces policy PDFs, all running on
-your machine with Docker Compose.
+Steps 1 to 4 are done: the backend, a Next.js frontend and a docs worker that produces policy PDFs, all running on
+your machine with Docker Compose. Terraform for the Azure environment is in [infra/terraform](infra/terraform/README.md).
+It has been written and validated but not yet applied.
 
 ## Architecture
 
@@ -46,6 +47,7 @@ Customer ─────────────────────► Quot
 | `QuickCover.DocsWorker` | Host | `PolicyIssuedConsumer`, which renders the policy schedule PDF and stores it in blob storage. |
 | `QuickCover.Web` | Frontend | Next.js 16 (App Router, Tailwind): quote form, buy, "My policies", plus a proxy to the API. |
 | `QuickCover.UnitTests` | Tests | Pricing and quote rules, PDF rendering. |
+| `infra/terraform` | Infrastructure as code | AKS, ACR, Azure SQL, DocumentDB, Managed Redis, Storage, Key Vault. |
 
 Dependencies point inwards: Domain ← Application ← Infrastructure ← hosts.
 
@@ -79,6 +81,11 @@ Run the tests:
 ```bash
 dotnet test
 ```
+
+## Deploy to Azure
+
+See [infra/terraform/README.md](infra/terraform/README.md). In short: run `scripts/bootstrap-state.ps1` once, then
+`terraform init` / `plan` / `apply` with `environments/dev.tfvars`. Applying creates billable resources.
 
 ## Try the flow
 
@@ -139,6 +146,12 @@ Things worth trying:
   streams the file, so storage never needs public access or customer-aware rules.
 - **QuestPDF licence.** Free Community licence under $1M annual revenue. A larger business needs a paid licence, or
   can swap the renderer for PDFsharp/MigraDoc (MIT). Only `PolicyDocumentRenderer` would change.
+- **Same config keys everywhere.** Key Vault secrets are named `ConnectionStrings--Sql` and so on, which the .NET Key
+  Vault provider maps to `ConnectionStrings:Sql`. The apps read the same keys in Docker and in Azure.
+- **No passwords for platform plumbing.** AKS pulls from ACR with its kubelet identity (AcrPull). Local accounts are
+  disabled, so people reach the cluster with Entra ID through Azure RBAC. Terraform state uses Entra auth, not storage keys.
+- **Network shape decided up front.** The VNet and AKS subnet exist from day one, because moving a cluster to another
+  subnet means rebuilding it. A subnet is already reserved for step 6's private endpoints.
 - **ProblemDetails.** Errors come back as RFC 7807 JSON. A 500 never leaks internals.
 
 ## Known shortcuts (deliberate, for step 1)
@@ -157,7 +170,7 @@ Things worth trying:
 1. ✅ Backend running locally
 2. ✅ Next.js frontend: quote form, buy, "my policies"
 3. ✅ Docs worker: consume `PolicyIssued`, write a PDF to Blob storage (Azurite locally)
-4. Terraform: AKS, ACR, Azure SQL, DocumentDB, Managed Redis, Key Vault, Storage
+4. ✅ Terraform: AKS, ACR, Azure SQL, DocumentDB, Managed Redis, Key Vault, Storage (written and validated, not applied)
 5. CI/CD: build, test, push to ACR, Helm deploy
 6. Workload identity + Key Vault + Private Link; Entra sign-in
 7. Grafana + Loki + Prometheus (or Managed Grafana); OpenTelemetry tracing

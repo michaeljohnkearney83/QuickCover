@@ -12,6 +12,7 @@ dotnet build                     # from repo root (QuickCover.sln)
 dotnet test                      # unit tests in tests/QuickCover.UnitTests
 cd src/QuickCover.Web && npm run dev    # frontend outside Docker; API_URL defaults to http://localhost:5080
 cd src/QuickCover.Web && npm run lint && npm run build
+cd infra/terraform && terraform fmt -recursive && terraform init -backend=false && terraform validate
 ```
 
 ## Layout and rules
@@ -28,6 +29,11 @@ cd src/QuickCover.Web && npm run lint && npm run build
   route params on the client need a `<Suspense>` boundary, and the React lint rule forbids setState directly in effects.
   The browser only calls `/api/*` on the web app. A catch-all route handler (`app/api/[...path]/route.ts`) proxies to the Quote API using `API_URL` read at
   runtime, so the API needs no CORS settings and stays internal in AKS.
+- `infra/terraform`: one root module per environment via `environments/<env>.tfvars`. It uses the **azurerm 5.x**
+  provider, which is newer than most training data. Check resource and argument names against the provider schema
+  (`terraform providers schema -json`) rather than from memory. For example, `rbac_authorization_enabled` is required on
+  Key Vault and `node_provisioning_profile` is required on AKS. Never run `apply`/`destroy` (or `plan` against a real
+  subscription) without asking: it costs money. Backend config (`*.backend.hcl`) and subscription ids stay out of git.
 - Dependencies point inwards: Domain ← Application ← Infrastructure ← hosts. Handlers depend on ports, never on
   infrastructure types.
 - Use **Mediator** (source-generated, MIT), not MediatR. Keep **MassTransit on 8.x** (v9 is commercial).
