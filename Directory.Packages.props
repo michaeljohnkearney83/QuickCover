@@ -20,6 +20,10 @@
     <PackageVersion Include="MongoDB.Driver" Version="2.28.0" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
     <PackageVersion Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+    <PackageVersion Include="Azure.Storage.Blobs" Version="12.30.2" />
+    <!-- QuestPDF: free Community licence for individuals and companies under $1M annual revenue.
+         A larger business needs a paid licence, or swap the renderer for PDFsharp/MigraDoc (MIT). -->
+    <PackageVersion Include="QuestPDF" Version="2026.9.2" />
 
     <!-- Tests -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />

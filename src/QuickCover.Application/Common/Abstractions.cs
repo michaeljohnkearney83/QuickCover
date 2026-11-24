@@ -28,6 +28,17 @@ public interface IPolicyReadRepository
 {
     Task<PolicySummary?> GetByQuoteIdAsync(Guid quoteId, string customerId, CancellationToken ct);
     Task<IReadOnlyList<PolicySummary>> ListForCustomerAsync(string customerId, CancellationToken ct);
+    Task<PolicySummary?> GetAsync(Guid policyId, string customerId, CancellationToken ct);
+}
+
+/// <summary>Where issued policy documents (PDFs) live. Blob storage: Azurite locally, Azure Storage in the cloud.</summary>
+public interface IPolicyDocumentStore
+{
+    /// <summary>Saves (or overwrites) the document for a policy. Overwriting makes redelivered messages harmless.</summary>
+    Task SaveAsync(Guid policyId, Stream pdf, CancellationToken ct);
+
+    /// <summary>Opens the document for reading, or returns null if it has not been generated yet.</summary>
+    Task<Stream?> OpenReadAsync(Guid policyId, CancellationToken ct);
 }
 
 public interface IEventPublisher

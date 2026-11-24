@@ -4,7 +4,8 @@ A small taxi-insurance quote-and-buy system, built to practise the Acorn Insuran
 **.NET 8, Clean Architecture, Mediator, MassTransit + RabbitMQ, SQL Server, MongoDB, Redis, Docker**,
 deploying later to **AKS** with Azure-managed equivalents.
 
-Steps 1 and 2 are done: the backend and a Next.js frontend, running entirely on your machine with Docker Compose.
+Steps 1 to 3 are done: the backend, a Next.js frontend and a docs worker that produces policy PDFs, all running on
+your machine with Docker Compose.
 
 ## Architecture
 
@@ -25,6 +26,13 @@ Customer ─────────────────────► Quot
                                                                                   Policy worker
                                                                      creates Policy in SQL, publishes
                                                                      PolicyIssued (via outbox)
+                                                                                         │
+                                                                            PolicyIssued │
+                                                                                         ▼
+                                                     Blob storage ◄──── PDF ──────── Docs worker
+                                                  (Azurite locally)                (QuestPDF, no SQL)
+                                                         │
+                       GET /api/policies/{id}/document ◄─┘  (API checks the policy is yours, then streams it)
 ```
 
 | Project | Layer | What lives there |
@@ -32,11 +40,12 @@ Customer ─────────────────────► Quot
 | `QuickCover.Domain` | Domain | `Quote`, `Purchase`, `Policy`, `PricingEngine`. No dependencies. |
 | `QuickCover.Contracts` | Shared | Integration events (`QuotePurchased`, `PolicyIssued`). |
 | `QuickCover.Application` | Application | Commands/queries + handlers (Mediator), validation pipeline, ports (interfaces). |
-| `QuickCover.Infrastructure` | Infrastructure | EF Core + outbox, Mongo repository, Redis cache, MassTransit setup. |
+| `QuickCover.Infrastructure` | Infrastructure | EF Core + outbox, Mongo repository, Redis cache, MassTransit setup, blob document store. |
 | `QuickCover.QuoteApi` | Host | Minimal API endpoints, ProblemDetails error handling, Swagger. |
 | `QuickCover.PolicyWorker` | Host | `QuotePurchasedConsumer`, which issues policies. |
+| `QuickCover.DocsWorker` | Host | `PolicyIssuedConsumer`, which renders the policy schedule PDF and stores it in blob storage. |
 | `QuickCover.Web` | Frontend | Next.js 16 (App Router, Tailwind): quote form, buy, "My policies", plus a proxy to the API. |
-| `QuickCover.UnitTests` | Tests | Pricing and quote rules. |
+| `QuickCover.UnitTests` | Tests | Pricing and quote rules, PDF rendering. |
 
 Dependencies point inwards: Domain ← Application ← Infrastructure ← hosts.
 
@@ -52,7 +61,7 @@ docker compose up --build
 - Swagger: http://localhost:5080/swagger
 - RabbitMQ management: http://localhost:15673 (guest / guest)
 
-Redis, RabbitMQ and the web app are published on host ports 6380, 5673, 15673 and 3080 so they do not clash with other local stacks. Override them with `REDIS_PORT`, `RABBITMQ_PORT`, `RABBITMQ_UI_PORT` and `WEB_PORT` in `.env` (see `.env.example`).
+Redis, RabbitMQ and the web app are published on host ports 6380, 5673, 15673 and 3080 so they do not clash with other local stacks. Override them with `REDIS_PORT`, `RABBITMQ_PORT`, `RABBITMQ_UI_PORT` and `WEB_PORT` in `.env` (see `.env.example`). Azurite (blob storage) is on 10000 (`AZURITE_PORT`); browse it with Azure Storage Explorer using the local emulator connection.
 
 > **Apple Silicon:** the SQL Server image is x86-only. In Docker Desktop, turn on
 > *Settings → General → Use Rosetta for x86/amd64 emulation*.
@@ -74,7 +83,7 @@ dotnet test
 ## Try the flow
 
 In the browser: open http://localhost:3080, get a price, pay (simulated), and watch the policy appear a second
-later. The header shows a demo customer id: click it to switch customer and check you can't see their quotes.
+later. Then click **Download policy schedule (PDF)**. The header shows a demo customer id: click it to switch customer and check you can't see their quotes.
 
 Or with curl:
 
@@ -94,6 +103,9 @@ curl -s http://localhost:5080/api/quotes/<quoteId>/policy -H "X-Customer-Id: cus
 
 # 4. List the customer's policies
 curl -s http://localhost:5080/api/policies -H "X-Customer-Id: cust-123"
+
+# 5. Download the policy schedule (use the policyId from step 3 or 4)
+curl -s -o policy.pdf http://localhost:5080/api/policies/<policyId>/document -H "X-Customer-Id: cust-123"
 ```
 
 Things worth trying:
@@ -102,6 +114,8 @@ Things worth trying:
 - **Stop the worker** (`docker compose stop policy-worker`), buy a quote, then start it again. The message waits in RabbitMQ and the policy appears when the worker comes back.
 - **Stop Redis** and get a quote. It still works, just slower: the cache falls back to the source.
 - **Watch the outbox**: query `OutboxMessage` in SQL Server right after a purchase.
+- **Stop the docs worker** (`docker compose stop docs-worker`) and buy a quote. The policy is issued but the PDF
+  download says it is still being prepared. Start the worker again and the document appears.
 
 ## Design decisions (interview talking points)
 
@@ -117,6 +131,14 @@ Things worth trying:
   through every environment. It forwards only `/api/quotes/*` and `/api/policies/*`. Entra tokens get attached here later.
 - **Async issuance in the UI.** Purchase returns `202 Accepted`. The quote page polls the policy endpoint and, after
   30 seconds, falls back to "it will appear in My policies".
+- **Event-carried state transfer.** `PolicyIssued` carries the premium and dates, so the docs worker builds the PDF
+  from the event alone. It has no SQL connection at all: a smaller blast radius and one less thing to scale together.
+- **Idempotency without an inbox.** The docs worker writes `policies/{policyId}.pdf`. A redelivered message
+  overwrites the same blob with the same document, so it needs no SQL inbox/outbox (`AddMessaging(..., useSqlOutbox: false)`).
+- **Private documents.** The blob container is private. The API checks the policy belongs to the caller before it
+  streams the file, so storage never needs public access or customer-aware rules.
+- **QuestPDF licence.** Free Community licence under $1M annual revenue. A larger business needs a paid licence, or
+  can swap the renderer for PDFsharp/MigraDoc (MIT). Only `PolicyDocumentRenderer` would change.
 - **ProblemDetails.** Errors come back as RFC 7807 JSON. A 500 never leaks internals.
 
 ## Known shortcuts (deliberate, for step 1)
@@ -125,13 +147,16 @@ Things worth trying:
   `dotnet ef migrations add Initial -p src/QuickCover.Infrastructure -s src/QuickCover.QuoteApi`
 - The customer comes from an `X-Customer-Id` header (the web app keeps a demo id in localStorage). This gets replaced by Entra ID tokens in a later step.
 - Payment is faked.
+- Blob access uses a connection string (Azurite's well-known dev key). In Azure it becomes a managed identity with
+  the Storage Blob Data role, and no key at all.
+- Policies issued before the docs worker existed have no PDF. There's no backfill job.
 - Connection strings are in config. In Azure they move to Key Vault, read via managed identity.
 
 ## Roadmap
 
 1. ✅ Backend running locally
 2. ✅ Next.js frontend: quote form, buy, "my policies"
-3. Docs worker: consume `PolicyIssued`, write a PDF to Blob storage (Azurite locally)
+3. ✅ Docs worker: consume `PolicyIssued`, write a PDF to Blob storage (Azurite locally)
 4. Terraform: AKS, ACR, Azure SQL, DocumentDB, Managed Redis, Key Vault, Storage
 5. CI/CD: build, test, push to ACR, Helm deploy
 6. Workload identity + Key Vault + Private Link; Entra sign-in

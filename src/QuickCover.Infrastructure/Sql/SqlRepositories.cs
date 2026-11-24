@@ -23,6 +23,14 @@ internal sealed class EfPolicyReadRepository(QuickCoverDbContext db) : IPolicyRe
                 p.Id, p.PolicyNumber, p.QuoteId, p.AnnualPremium, p.StartDate, p.EndDate, p.IssuedUtc))
             .FirstOrDefaultAsync(ct);
 
+    public Task<PolicySummary?> GetAsync(Guid policyId, string customerId, CancellationToken ct) =>
+        db.Policies
+            .AsNoTracking()
+            .Where(p => p.Id == policyId && p.CustomerId == customerId)
+            .Select(p => new PolicySummary(
+                p.Id, p.PolicyNumber, p.QuoteId, p.AnnualPremium, p.StartDate, p.EndDate, p.IssuedUtc))
+            .FirstOrDefaultAsync(ct);
+
     public async Task<IReadOnlyList<PolicySummary>> ListForCustomerAsync(string customerId, CancellationToken ct) =>
         await db.Policies
             .AsNoTracking()

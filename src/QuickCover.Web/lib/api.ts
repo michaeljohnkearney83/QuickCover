@@ -51,7 +51,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function send(path: string, init?: RequestInit): Promise<Response> {
   const response = await fetch(`/api${path}`, {
     ...init,
     headers: {
@@ -72,6 +72,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     );
   }
 
+  return response;
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await send(path, init);
   return response.json() as Promise<T>;
 }
 
@@ -95,4 +100,10 @@ export const api = {
   },
 
   listPolicies: () => request<Policy[]>("/policies"),
+
+  /** The policy schedule PDF. 404 (ApiError) while the docs worker is still generating it. */
+  getPolicyDocument: async (policyId: string) => {
+    const response = await send(`/policies/${policyId}/document`, { headers: { Accept: "application/pdf" } });
+    return response.blob();
+  },
 };

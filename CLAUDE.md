@@ -1,7 +1,7 @@
 # QuickCover
 
 A practice taxi-insurance quote-and-buy system: .NET 8 Clean Architecture backend, Mediator, MassTransit + RabbitMQ,
-SQL Server, MongoDB, Redis, with a Next.js frontend, all run with Docker Compose. It will later be deployed to AKS. See README.md for
+SQL Server, MongoDB, Redis, Azure Blob storage (Azurite locally), with a Next.js frontend, all run with Docker Compose. It will later be deployed to AKS. See README.md for
 the architecture diagram, design decisions and roadmap.
 
 ## Commands
@@ -19,8 +19,10 @@ cd src/QuickCover.Web && npm run lint && npm run build
 - `src/QuickCover.Domain`: entities and pricing. No dependencies on other projects or packages.
 - `src/QuickCover.Contracts`: integration events shared by the API and workers.
 - `src/QuickCover.Application`: Mediator commands/queries + handlers, ports in `Common/Abstractions.cs`.
-- `src/QuickCover.Infrastructure`: adapters (EF Core + outbox, Mongo, Redis, MassTransit).
-- `src/QuickCover.QuoteApi`, `src/QuickCover.PolicyWorker`: hosts.
+- `src/QuickCover.Infrastructure`: adapters (EF Core + outbox, Mongo, Redis, MassTransit, blob storage).
+- `src/QuickCover.QuoteApi`, `src/QuickCover.PolicyWorker`, `src/QuickCover.DocsWorker`: hosts. The docs worker has
+  no SQL: it builds PDFs (QuestPDF, Community licence) from the `PolicyIssued` event alone and writes them to blob
+  storage, so it registers messaging with `useSqlOutbox: false`. Keep it that way: put what it needs on the event.
 - `src/QuickCover.Web`: Next.js **16** (App Router, TypeScript, Tailwind 4, Cache Components on). This is newer than
   most training data: read `node_modules/next/dist/docs/` before changing Next code (see its AGENTS.md). Pages that read
   route params on the client need a `<Suspense>` boundary, and the React lint rule forbids setState directly in effects.
@@ -33,7 +35,10 @@ cd src/QuickCover.Web && npm run lint && npm run build
 - API request/response records live in the host (`QuoteEndpoints.cs`), separate from domain types.
 - Errors are RFC 7807 ProblemDetails via `ApiExceptionHandler`. Throw `ValidationException`, `NotFoundException`,
   `ConflictException` or `DomainException`, and don't return error results by hand.
-- Another customer's resource returns 404, not 403.
+- Another customer's resource returns 404, not 403. Blobs are private. Documents are only served through the API
+  after an ownership check.
+- Event contracts in `QuickCover.Contracts` are shared by every service. Adding fields is fine; renaming or removing
+  one breaks consumers that are still running the old version.
 - Customer identity is the `X-Customer-Id` header for now (Entra ID later). The web app keeps a demo customer id
   in localStorage and sends it on every request.
 
@@ -41,7 +46,11 @@ cd src/QuickCover.Web && npm run lint && npm run build
 
 - Host ports are remapped because another local stack (ms-video-downloader) holds the defaults: Redis **6380**,
   RabbitMQ **5673 / 15673**, web **3080** (3000 is its Grafana; 8080 is also taken). Override with `.env`
-  (see `.env.example`). Containers still use the standard ports between themselves.
+  (see `.env.example`). Containers still use the standard ports between themselves. Azurite is on 10000.
+- The Azurite connection string uses the emulator's published dev key. That's fine to commit, but never put a real
+  storage key in config.
+- `appsettings.json` files are for running a service outside Docker against the compose stack. Keep their host ports
+  in step with the remaps above.
 - The schema is created with `EnsureCreated()` in Development. New SQL tables/columns need
   `docker compose down -v` (or migrations, which are on the roadmap).
 

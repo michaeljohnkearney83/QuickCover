@@ -1,3 +1,4 @@
+import { DownloadPolicyButton } from "@/components/DownloadPolicyButton";
 import type { Policy } from "@/lib/api";
 import { formatDate, formatMoney } from "@/lib/format";
 
@@ -21,6 +22,9 @@ export function PolicyCard({ policy }: { policy: Policy }) {
       </div>
       <div className="sm:col-span-4 text-sm text-muted">
         Cover from {formatDate(policy.startDate)} to {formatDate(policy.endDate)}
+      </div>
+      <div className="sm:col-span-4">
+        <DownloadPolicyButton policy={policy} />
       </div>
     </div>
   );

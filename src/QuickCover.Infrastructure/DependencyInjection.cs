@@ -1,3 +1,4 @@
+using Azure.Storage.Blobs;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -9,6 +10,7 @@ using QuickCover.Infrastructure.Caching;
 using QuickCover.Infrastructure.Messaging;
 using QuickCover.Infrastructure.Mongo;
 using QuickCover.Infrastructure.Sql;
+using QuickCover.Infrastructure.Storage;
 
 namespace QuickCover.Infrastructure;
 
@@ -52,29 +54,38 @@ public static class DependencyInjection
     /// MassTransit with the EF Core transactional outbox. The transport is chosen by config:
     /// Messaging:Transport = RabbitMq (default, local + AKS) or AzureServiceBus.
     /// Handlers and consumers don't change at all when you switch.
+    /// <para>
+    /// <paramref name="useSqlOutbox"/> turns on the EF Core outbox/inbox. Services that write to SQL need it.
+    /// A service with no SQL (the docs worker) turns it off and relies on its own idempotency instead.
+    /// </para>
     /// </summary>
     public static IServiceCollection AddMessaging(
         this IServiceCollection services,
         IConfiguration config,
-        Action<IBusRegistrationConfigurator>? addConsumers = null)
+        Action<IBusRegistrationConfigurator>? addConsumers = null,
+        bool useSqlOutbox = true)
     {
         services.AddMassTransit(x =>
         {
             x.SetKebabCaseEndpointNameFormatter();
 
-            x.AddEntityFrameworkOutbox<QuickCoverDbContext>(o =>
+            if (useSqlOutbox)
             {
-                o.UseSqlServer();
-                o.UseBusOutbox();                       // publishes from the API go via the outbox table
-                o.QueryDelay = TimeSpan.FromSeconds(1); // how often the delivery service polls
-            });
+                x.AddEntityFrameworkOutbox<QuickCoverDbContext>(o =>
+                {
+                    o.UseSqlServer();
+                    o.UseBusOutbox();                       // publishes from the API go via the outbox table
+                    o.QueryDelay = TimeSpan.FromSeconds(1); // how often the delivery service polls
+                });
+            }
 
-            // Every consumer endpoint: retry transient failures, then use the inbox/outbox so a
-            // redelivered message is processed once and any events it publishes are sent exactly once.
+            // Every consumer endpoint: retry transient failures. With the outbox on, the inbox also makes a
+            // redelivered message process once and any events it publishes go out exactly once.
             x.AddConfigureEndpointsCallback((context, _, endpoint) =>
             {
                 endpoint.UseMessageRetry(r => r.Intervals(100, 500, 1_000, 5_000));
-                endpoint.UseEntityFrameworkOutbox<QuickCoverDbContext>(context);
+                if (useSqlOutbox)
+                    endpoint.UseEntityFrameworkOutbox<QuickCoverDbContext>(context);
             });
 
             addConsumers?.Invoke(x);
@@ -92,7 +103,11 @@ public static class DependencyInjection
             {
                 x.UsingRabbitMq((context, cfg) =>
                 {
-                    cfg.Host(config["Messaging:RabbitMq:Host"] ?? "localhost", "/", h =>
+                    cfg.Host(
+                        config["Messaging:RabbitMq:Host"] ?? "localhost",
+                        ushort.Parse(config["Messaging:RabbitMq:Port"] ?? "5672"),
+                        "/",
+                        h =>
                     {
                         h.Username(config["Messaging:RabbitMq:Username"] ?? "guest");
                         h.Password(config["Messaging:RabbitMq:Password"] ?? "guest");
@@ -102,6 +117,16 @@ public static class DependencyInjection
             }
         });
 
+        return services;
+    }
+
+    /// <summary>Blob storage for policy documents. Used by the API (read) and the docs worker (write).</summary>
+    public static IServiceCollection AddDocumentStorage(this IServiceCollection services, IConfiguration config)
+    {
+        services.AddSingleton(_ => new BlobServiceClient(Required(config, "ConnectionStrings:Blob")));
+        services.AddSingleton<IPolicyDocumentStore>(sp => new BlobPolicyDocumentStore(
+            sp.GetRequiredService<BlobServiceClient>(),
+            config["Storage:PolicyDocumentsContainer"] ?? "policy-documents"));
         return services;
     }
 

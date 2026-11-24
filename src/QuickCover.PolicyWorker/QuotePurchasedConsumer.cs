@@ -40,7 +40,8 @@ public sealed class QuotePurchasedConsumer(
 
         // Goes into the outbox with the policy row; sent only after the transaction commits.
         await context.Publish(new PolicyIssued(
-            policy.Id, policy.PolicyNumber, policy.QuoteId, policy.CustomerId, policy.IssuedUtc));
+            policy.Id, policy.PolicyNumber, policy.QuoteId, policy.CustomerId,
+            policy.AnnualPremium, policy.StartDate, policy.EndDate, policy.IssuedUtc));
 
         await db.SaveChangesAsync(context.CancellationToken);
 

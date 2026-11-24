@@ -9,7 +9,7 @@ import type { NextRequest } from "next/server";
 
 const ALLOWED_ROOTS = new Set(["quotes", "policies"]);
 const FORWARDED_REQUEST_HEADERS = ["content-type", "accept", "x-customer-id"];
-const FORWARDED_RESPONSE_HEADERS = ["content-type", "location"];
+const FORWARDED_RESPONSE_HEADERS = ["content-type", "content-length", "content-disposition", "location"];
 
 async function proxy(request: NextRequest, ctx: RouteContext<"/api/[...path]">) {
   const { path } = await ctx.params;

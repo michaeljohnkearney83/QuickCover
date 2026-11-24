@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\QuickCover.Domain\QuickCover.Domain.csproj" />
+    <ProjectReference Include="..\..\src\QuickCover.DocsWorker\QuickCover.DocsWorker.csproj" />
   </ItemGroup>
 
 </Project>

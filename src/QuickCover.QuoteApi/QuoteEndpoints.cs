@@ -84,6 +84,18 @@ public static class QuoteEndpoints
             .WithTags("Policies")
             .WithName("ListPolicies");
 
+        app.MapGet("/api/policies/{policyId:guid}/document", async (
+                Guid policyId,
+                [FromHeader(Name = CustomerHeader)] string customerId,
+                IMediator mediator,
+                CancellationToken ct) =>
+            {
+                var document = await mediator.Send(new GetPolicyDocumentQuery(policyId, customerId), ct);
+                return Results.File(document.Content, "application/pdf", document.FileName);
+            })
+            .WithTags("Policies")
+            .WithName("GetPolicyDocument");
+
         return app;
     }
 }
