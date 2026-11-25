@@ -57,6 +57,8 @@ cd infra/terraform && terraform fmt -recursive && terraform init -backend=false 
   storage key in config.
 - `appsettings.json` files are for running a service outside Docker against the compose stack. Keep their host ports
   in step with the remaps above.
+- The Azure subscription is a **Free Trial** (spending limit on). It offers no VM sizes in UK South and has a 4 vCPU
+  quota per region, so dev deploys to UK West with a single AKS node. Size anything new to fit.
 - The schema is created with `EnsureCreated()` in Development. New SQL tables/columns need
   `docker compose down -v` (or migrations, which are on the roadmap).
 

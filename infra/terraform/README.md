@@ -48,6 +48,11 @@ terraform destroy -var-file=environments/dev.tfvars
 
 ## Notes
 
+- **Free Trial limits.** `dev.tfvars` is sized for an Azure Free Trial subscription. That subscription type offers no
+  VM sizes in UK South (hence `ukwest`) and caps each region at 4 vCPUs (hence a single 2-vCPU node, leaving room for
+  the upgrade surge node). Check a subscription with `az vm list-skus -l <region>` and `az vm list-usage -l <region>`.
+  A plan can't see these limits; only an apply would fail on them.
+
 - **Secrets end up in state.** The generated SQL and DocumentDB passwords and the Redis and Storage keys are in
   Terraform state as well as Key Vault. State lives in a private, Entra-only storage account with versioning on.
   Step 6 removes most of these: the apps switch to workload identity and the key-based auth gets turned off.
